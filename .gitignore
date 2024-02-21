@@ -1,0 +1,7 @@
+.env
+.venv
+logs.log
+client_secret.json
+logs.*
+*.xml
+*iml
