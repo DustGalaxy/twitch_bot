@@ -5,3 +5,6 @@ client_secret.json
 logs.*
 *.xml
 *iml
+.idea
+generics.py
+models.py
