@@ -1,10 +1,11 @@
+import twitchio
 from loguru import logger
 
 from twitchio.ext import commands
 
 from bot_module import bot
 from src.errors import YTVideoTooLongError, YTVideoFewViewsError, YoutubeConverterError
-from utils import video_verifier, youtube_converter, add_music, get_yt_video_details
+from utils import video_verifier, youtube_converter, add_music, get_yt_video_details, get_user_config
 
 
 @bot.command(name="test")
@@ -22,9 +23,10 @@ async def ping(ctx: commands.Context):
 
 
 @bot.command(name="help")
-async def help_command(ctx: commands.Context):
+async def help_command(ctx: commands.Context,  user: twitchio.User):
     msg = f"@{ctx.author.name} У меня есть следующие команды: test, help, mr."
     await ctx.send(msg)
+
     logger.info(f"Executed command: help, message send: {msg}")
 
 
@@ -58,13 +60,14 @@ async def mr_command(ctx: commands.Context, arg: str | None):
     if not cmd:
         await ctx.send("Заказ музыки сейчас не доступен.")
         logger.info(f"{ctx.author.name} попытался поставить музыку. url: {arg}")
-
         return
+
+    config = get_user_config(ctx.channel.name)
 
     try:
         url = youtube_converter(arg)
         details = get_yt_video_details(url)
-        await video_verifier(details, ctx.channel.name)
+        await video_verifier(details, config)
 
     except YoutubeConverterError:
         await ctx.send(f"@{ctx.author.name} ссылка не поддерживается, поробуйте другую.")
@@ -78,7 +81,17 @@ async def mr_command(ctx: commands.Context, arg: str | None):
         await ctx.send("У видео маловато просмотров.")
         return
 
-    if await add_music(details, from_user=ctx.author.name, to_user=ctx.channel.name) == "OK":
+    priority_song = 1
+    if ctx.author.is_broadcaster:
+        priority_song = 99
+
+    if await add_music(
+            details,
+            from_user=ctx.author.name,
+            to_user=ctx.channel.name,
+            config=config,
+            priority=priority_song
+    ) == "OK":
         msg: str = "Да, я поставлю этот трек для тебя! (нет)"
         await ctx.send(msg)
         logger.info(f"""

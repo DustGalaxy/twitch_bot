@@ -11,15 +11,17 @@ from src.config import API_KEY, API_URL, ALGORITHM, CONFIG_EX_SECONDS
 from src.redis_init import redis_client
 
 
-async def add_music(details: dict, from_user: str, to_user: str) -> str:
+async def add_music(details: dict, from_user: str, to_user: str, config: dict, priority: int) -> str:
     url = API_URL + '/order/new_order'
     payload = {
                 "video_id": details['video_id'],
                 'title': details['title'],
-                "thumbnail_url": details['thumbnail_url'],
                 'length': details['length'],
                 "sendler": from_user,
-                "username": to_user
+                "username": to_user,
+                "is_active": True,
+                "in_statistics": config["in_statistics"],
+                "priority": priority
     }
     encoded_jwt = jwt.encode(payload, API_KEY, algorithm=ALGORITHM)
     async with aiohttp.ClientSession() as session:
@@ -29,7 +31,7 @@ async def add_music(details: dict, from_user: str, to_user: str) -> str:
         ) as response:
 
             logger.info(await response.json())
-            if response.status == 200:
+            if response.status == 201:
                 return "OK"
             else:
                 return "FAIL"
@@ -81,9 +83,7 @@ def get_yt_video_details(url: str):
     }
 
 
-async def video_verifier(details: dict, username: str):
-
-    config = get_user_config(username)
+async def video_verifier(details: dict, config: dict):
     if details["length"] > config["len"]:
         raise YTVideoTooLongError(details["length"])
     elif details["views"] < config["views"]:
