@@ -62,3 +62,4 @@ bot = MyBot(
     prefix=prefix_callback,
     initial_channels=get_initial_channels()
 )
+

@@ -1,3 +1,4 @@
+import asyncio
 import twitchio
 from loguru import logger
 
@@ -6,6 +7,7 @@ from twitchio.ext import commands
 from bot_module import bot
 from src.errors import YTVideoTooLongError, YTVideoFewViewsError, YoutubeConverterError
 from utils import video_verifier, youtube_converter, add_music, get_yt_video_details, get_user_config
+from src.redis_init import redis_client
 
 
 @bot.command(name="test")
@@ -39,25 +41,23 @@ async def mr_command(ctx: commands.Context, arg: str | None):
         await ctx.send("Это команда для заказа музыки, её включают модеры или стример. Пример команды: !mr https://youtu.be/dQw4w9WgXcQ")
         return
 
-    global cmd
-
     if arg in ["on", "off"] and (ctx.author.is_mod or ctx.author.is_broadcaster):
         match arg:
             case "on":
-                if not cmd:
-                    cmd = True
-                    await ctx.send("Заказ музыки включён.")
-                    logger.info(f"{ctx.author.name} включил заказ музыки.")
+                redis_client.set(name=f'{ctx.channel.name}_music_request_enable', value=1)
+                await ctx.send("Заказ музыки включён.")
+                logger.info(f"{ctx.author.name} включил заказ музыки.")
 
             case "off":
-                if cmd:
-                    cmd = False
-                    await ctx.send("Заказ музыки выключен.")
-                    logger.info(f"{ctx.author.name} выключил заказ музыки.")
+                redis_client.set(name=f'{ctx.channel.name}_music_request_enable', value=0)
+                await ctx.send("Заказ музыки выключен.")
+                logger.info(f"{ctx.author.name} выключил заказ музыки.")
 
         return
 
-    if not cmd:
+    music_request_enable = redis_client.get(f'{ctx.channel.name}_music_request_enable')
+
+    if not music_request_enable:
         await ctx.send("Заказ музыки сейчас не доступен.")
         logger.info(f"{ctx.author.name} попытался поставить музыку. url: {arg}")
         return
@@ -81,6 +81,10 @@ async def mr_command(ctx: commands.Context, arg: str | None):
         await ctx.send("У видео маловато просмотров.")
         return
 
+    except ValueError:
+        await ctx.send("По этой ссылке видео нету... Проверьте ссылку.")
+        return
+
     priority_song = 1
     if ctx.author.is_broadcaster:
         priority_song = 99
@@ -95,8 +99,9 @@ async def mr_command(ctx: commands.Context, arg: str | None):
         msg: str = "Да, я поставлю этот трек для тебя! (нет)"
         await ctx.send(msg)
         logger.info(f"""
-                        Executed command: mr, message send: {msg} 
-                        | video id: {url} 
+                        | Executed command: mr, message send: {msg} 
+                        | video url: {url} 
+                        | title: {details['title']}
                         | channel name: {ctx.channel.name} 
                         | author name: {ctx.author.name}
                     """)
@@ -104,8 +109,8 @@ async def mr_command(ctx: commands.Context, arg: str | None):
         msg: str = "Что то пошло не так! Обратитесь к разработчику!"
         await ctx.send(msg)
         logger.info(f"""
-                        Executed command: mr, message send: {msg} 
-                        | video id: {url} 
+                        | Executed command: mr, message send: {msg} 
+                        | video url: {url} 
                         | channel name: {ctx.channel.name} 
                         | author name: {ctx.author.name}
                     """)
@@ -114,6 +119,7 @@ async def mr_command(ctx: commands.Context, arg: str | None):
 @bot.event()
 async def event_ready():
     logger.info(f'Logged into Twitch | {bot.nick}')
+    await bot.join_channels(['DustGalaxy', ])
     # r = await get_user_config(INIT_CHANNELS.split(" ")[0])
     # print(r)
 
@@ -125,6 +131,8 @@ def main():
                level="INFO",
                rotation="06:00",
                compression="zip")
+
+
 
     bot.run()
 

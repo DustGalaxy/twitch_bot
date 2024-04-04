@@ -2,9 +2,12 @@ import aiohttp
 import requests
 import yarl
 import json
+import re
+import isodate
+from icecream import ic
 from jose import jwt
 
-from pytube import YouTube
+from youtube_provaider import youtube
 from loguru import logger
 from src.errors import YTVideoTooLongError, YTVideoFewViewsError, YoutubeConverterError
 from src.config import API_KEY, API_URL, ALGORITHM, CONFIG_EX_SECONDS
@@ -29,11 +32,11 @@ async def add_music(details: dict, from_user: str, to_user: str, config: dict, p
             url,
             json={"token": encoded_jwt}
         ) as response:
-
-            logger.info(await response.json())
             if response.status == 201:
+                logger.info("Order has been successfully created")
                 return "OK"
             else:
+                logger.info("Order creating failed")
                 return "FAIL"
 
 
@@ -71,20 +74,60 @@ def youtube_converter(arg: str) -> str:
     return url.__str__()
 
 
+def youtube_parser(url: str) -> str | None:
+    """
+    Извлекает идентификатор видео YouTube из URL.
+
+    Аргументы:
+    url (str): URL-адрес видео YouTube
+
+    Возвращает:
+    str: Идентификатор видео YouTube (11 символов) или None, если URL некорректный
+
+    Поддерживает:
+    http://www.youtube.com/watch?v=id123456789&feature=feedrec_grec_index
+    http://www.youtube.com/user/IngridMichaelsonVEVO#p/a/u/1/id123456789
+    http://www.youtube.com/v/id123456789?fs=1&amp;hl=en_US&amp;rel=0
+    http://www.youtube.com/watch?v=id123456789#t=0m10s
+    http://www.youtube.com/embed/id123456789?rel=0
+    http://www.youtube.com/watch?v=id123456789
+    http://youtu.be/id123456789
+    """
+    regex = re.compile(r'^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*', )
+    match = re.match(regex, url)
+    return match.group(7) if match and len(match.group(7)) == 11 else None
+
+
 def get_yt_video_details(url: str):
-    yt = YouTube(url)
+
+    request = youtube.videos().list(
+        part="snippet,contentDetails,statistics",
+        id=youtube_parser(url),
+    )
+    response = request.execute()
+
+    if not len(response['items']):
+        raise ValueError()
 
     return {
-        'title': yt.title,
-        'video_id': yt.video_id,
-        'length': yt.length,
-        'views': yt.views,
-        'thumbnail_url': yt.thumbnail_url,
+        'title': response['items'][0]['snippet']['title'],
+        'video_id': response['items'][0]["id"],
+        'length': isodate.parse_duration(response['items'][0]['contentDetails']['duration']).seconds,
+        'views': response['items'][0]['statistics']['viewCount'],
     }
+
+    # yt = YouTube(url)
+    # return {
+    #     'title': yt.title,
+    #     'video_id': yt.video_id,
+    #     'length': yt.length,
+    #     'views': yt.views,
+    #     'thumbnail_url': yt.thumbnail_url,
+    # }
 
 
 async def video_verifier(details: dict, config: dict):
-    if details["length"] > config["len"]:
+    if int(details["length"]) > config["len"]:
         raise YTVideoTooLongError(details["length"])
-    elif details["views"] < config["views"]:
+    elif int(details["views"]) < config["views"]:
         raise YTVideoFewViewsError(details["views"])

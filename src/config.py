@@ -16,6 +16,7 @@ BOT_NICK = os.environ.get("BOT_NICK")
 
 INIT_CHANNELS = os.environ.get("INIT_CHANNELS")
 
+YOUTUBE_KEY = os.environ.get("YOUTUBE_KEY")
 
 REDIS_HOST = os.environ.get("REDIS_HOST")
 REDIS_PORT = os.environ.get("REDIS_PORT")
